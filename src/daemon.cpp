@@ -102,7 +102,7 @@ int main( int argc, const char** argv )
 
   TCLAP::SwitchArg clockSwitch("","clock","Display timing information to log.  Default=off", cmd, false);
 
-  TCLAP::SwitchArg motionSwitch("m", "motion", "Do motion detection.  Default=on", cmd, true);
+  TCLAP::SwitchArg motionSwitch("m", "motion", "Do motion detection.  Default=off", cmd, false);
 
   try
   {
