@@ -125,7 +125,7 @@ class VideoDispatcher
 
     /* tthread::mutex mMutex; */
     
-    ringbuffer<cv::Mat, 30> frameBuffer;
+    ringbuffer<cv::Mat, 60> frameBuffer;
 };
 
 class VideoBuffer

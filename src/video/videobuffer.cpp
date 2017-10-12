@@ -46,7 +46,9 @@ VideoDispatcher* VideoBuffer::createDispatcher(std::string mjpeg_url, int fps)
 void VideoBuffer::connect(std::string mjpeg_url, int fps)
 {
   
-  if (startsWith(mjpeg_url, "http") && hasEnding(mjpeg_url, ".mjpg") == false)
+  if (startsWith(mjpeg_url, "http") && 
+      hasEnding(mjpeg_url, ".mjpg") == false && 
+      hasEnding(mjpeg_url, ".mjpeg") == false)
   {
     /*
      The filename doesn't end with ".mjpg" so the downstream processing may not

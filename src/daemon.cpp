@@ -15,6 +15,8 @@
 #include <curl/curl.h>
 #include "support/timing.h"
 
+#include "motiondetector.h"
+
 #include <log4cplus/logger.h>
 #include <log4cplus/loggingmacros.h>
 #include <log4cplus/configurator.h>
@@ -22,6 +24,8 @@
 #include <log4cplus/fileappender.h>
 
 using namespace alpr;
+
+MotionDetector motiondetector;
 
 // prototypes
 void streamRecognitionThread(void* arg);
@@ -37,7 +41,6 @@ const std::string DEFAULT_LOG_FILE_PATH="/var/log/alprd.log";
 const std::string BEANSTALK_QUEUE_HOST="127.0.0.1";
 const int BEANSTALK_PORT=11300;
 const std::string BEANSTALK_TUBE_NAME="alprd";
-
 
 struct CaptureThreadData
 {
@@ -74,6 +77,7 @@ void segfault_handler(int sig) {
 }
 
 bool daemon_active;
+bool do_motion_detection;
 
 static log4cplus::Logger logger;
 
@@ -91,17 +95,20 @@ int main( int argc, const char** argv )
   TCLAP::CmdLine cmd("OpenAlpr Daemon", ' ', Alpr::getVersion());
 
   TCLAP::ValueArg<std::string> configDirArg("","config","Path to the openalpr config directory that contains alprd.conf and openalpr.conf. (Default: /etc/openalpr/)",false, "/etc/openalpr/" ,"config_file");
+
   TCLAP::ValueArg<std::string> logFileArg("l","log","Log file to write to.  Default=" + DEFAULT_LOG_FILE_PATH,false, DEFAULT_LOG_FILE_PATH ,"topN");
 
   TCLAP::SwitchArg daemonOffSwitch("f","foreground","Set this flag for debugging.  Disables forking the process as a daemon and runs in the foreground.  Default=off", cmd, false);
+
   TCLAP::SwitchArg clockSwitch("","clock","Display timing information to log.  Default=off", cmd, false);
+
+  TCLAP::SwitchArg motionSwitch("m", "motion", "Do motion detection.  Default=on", cmd, true);
 
   try
   {
     
     cmd.add( configDirArg );
     cmd.add( logFileArg );
-
     
     if (cmd.parse( argc, argv ) == false)
     {
@@ -117,6 +124,7 @@ int main( int argc, const char** argv )
     logFile = logFileArg.getValue();
     noDaemon = daemonOffSwitch.getValue();
     clockOn = clockSwitch.getValue();
+    do_motion_detection = motionSwitch.getValue();
   }
   catch (TCLAP::ArgException &e)    // catch any exceptions
   {
@@ -251,8 +259,6 @@ void streamRecognitionThread(void* arg)
   
   cv::Mat latestFrame;
   
-  std::vector<uchar> buffer;
-  
   LOG4CPLUS_INFO(logger, "Starting camera " << tdata->camera_id);
   
   while (daemon_active)
@@ -266,13 +272,19 @@ void streamRecognitionThread(void* arg)
       getTimeMonotonic(&startTime);
       
       std::vector<AlprRegionOfInterest> regionsOfInterest;
-      // TODO: Should this be our masked area?
-      regionsOfInterest.push_back(
-          AlprRegionOfInterest(0,0, latestFrame.cols, latestFrame.rows));
 
-      AlprResults results = alpr.recognize(latestFrame.data,
-          latestFrame.elemSize(), latestFrame.cols, latestFrame.rows,
-          regionsOfInterest);
+      if (do_motion_detection)
+      {
+        cv::Rect rectan = motiondetector.MotionDetect(&latestFrame);
+        if (rectan.width>0) 
+          regionsOfInterest.push_back(AlprRegionOfInterest(rectan.x, rectan.y, rectan.width, rectan.height));
+      }
+      else 
+        regionsOfInterest.push_back(AlprRegionOfInterest(0, 0, latestFrame.cols, latestFrame.rows));
+      
+      AlprResults results;
+      if (regionsOfInterest.size() > 0) 
+        results = alpr.recognize(latestFrame.data, latestFrame.elemSize(), latestFrame.cols, latestFrame.rows, regionsOfInterest);
       
       timespec endTime;
       getTimeMonotonic(&endTime);
