@@ -102,7 +102,7 @@ ELSE()
 ENDIF()
 
 IF (${OpenCV_VERSION} VERSION_LESS 2.4.7)
-	MESSAGE(FATAL_ERROR "OpenCV version is not compatible : ${OpenCV_VERSION}")
+  MESSAGE(FATAL_ERROR "OpenCV version is not compatible : ${OpenCV_VERSION}")
 ENDIF()
 
 include_directories(${OpenCV_INCLUDE_DIRS})
@@ -113,19 +113,19 @@ add_definitions( -DOPENCV_MAJOR_VERSION=${OpenCV_VERSION_MAJOR})
 include_directories(./openalpr )
 
 IF (WIN32)
-	add_definitions( -DWINDOWS)
-	add_definitions( -DNOMINMAX)
+  add_definitions( -DWINDOWS)
+  add_definitions( -DNOMINMAX)
 
-	# Extra linker dependencies for Windows
-	SET (Tesseract_LIBRARIES
-		${Tesseract_LIBRARIES}
-		ws2_32.lib
-	)
+  # Extra linker dependencies for Windows
+  SET (Tesseract_LIBRARIES
+    ${Tesseract_LIBRARIES}
+    ws2_32.lib
+  )
 ELSE()
 
-	SET (Extra_LIBS
-		pthread
-	)
+  SET (Extra_LIBS
+    pthread
+  )
 
 ENDIF()
 
@@ -158,37 +158,54 @@ if (NOT IOS)
     ${OpenCV_LIBS}
     ${Tesseract_LIBRARIES}
     ${Extra_LIBS}
-  )
+    )
 ENDIF()
 
 
 # Compile the alprd library on Unix-based OS
 IF (WITH_DAEMON)
+  SET(Boost_USE_STATIC_LIBS OFF) 
+  SET(Boost_USE_MULTITHREADED ON)  
+  SET(Boost_USE_STATIC_RUNTIME OFF) 
+
+  FIND_PACKAGE( Boost REQUIRED 
+    COMPONENTS 
+    atomic thread system
+    ) 
+
   ADD_EXECUTABLE( alprd  
     daemon.cpp 
     daemon/daemonconfig.cpp 
     daemon/beanstalk.c 
     daemon/beanstalk.cc 
-)
+    )
 
   FIND_PACKAGE( CURL REQUIRED )
   FIND_PACKAGE( log4cplus REQUIRED )
 
-  TARGET_LINK_LIBRARIES(alprd
-      ${OPENALPR_LIB}
-	  support
-      video
-	  curl
-	  ${OpenCV_LIBS}
-	  ${Tesseract_LIBRARIES}
-	  ${log4cplus_LIBRARIES}
-      ${Extra_LIBS}
+  INCLUDE_DIRECTORIES( 
+    ${Boost_INCLUDE_DIRS} 
     )
-	
+
+  TARGET_LINK_LIBRARIES( alprd
+    ${OPENALPR_LIB}
+    ${Boost_ATOMIC_LIBRARY} 
+    ${Boost_THREAD_LIBRARY} 
+    ${Boost_SYSTEM_LIBRARY} 
+    # TODO: Get rid of `tthread` (and other source-included support libraries).
+    support
+    video
+    ${CURL_LIBRARIES}
+    ${OpenCV_LIBS}
+    ${Tesseract_LIBRARIES}
+    ${log4cplus_LIBRARIES}
+    ${Extra_LIBS}
+    )
+  
 ENDIF()
 
 if(WITH_UTILITIES)
-add_subdirectory(misc_utilities)
+  add_subdirectory(misc_utilities)
 ENDIF()
 
 if (WITH_TESTS)  
@@ -199,41 +216,75 @@ add_subdirectory(openalpr)
 add_subdirectory(video)
 
 if (WITH_BINDING_JAVA) 
-add_subdirectory(bindings/java)
+  add_subdirectory(bindings/java)
 ENDIF()
 
 if (WITH_BINDING_PYTHON)
-add_subdirectory(bindings/python)
+  add_subdirectory(bindings/python)
 ENDIF()
         
 
 if (WITH_BINDING_GO)
-    set(OPENALPR_LIB_GO openalprgo)
-    set(TAG_OPENALPR_LIB_GO "-l${OPENALPR_LIB_GO}")
-    add_subdirectory(bindings/go)
+  set(OPENALPR_LIB_GO openalprgo)
+  set(TAG_OPENALPR_LIB_GO "-l${OPENALPR_LIB_GO}")
+  add_subdirectory(bindings/go)
 ENDIF()
 
 if (NOT IOS)
-  install (TARGETS    alpr DESTINATION   ${CMAKE_INSTALL_PREFIX}/bin)
-  install (FILES      ${CMAKE_SOURCE_DIR}/../doc/man/alpr.1 DESTINATION       ${CMAKE_INSTALL_PREFIX}/share/man/man1 COMPONENT doc)
+  install (
+    TARGETS alpr 
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+    )
+  install (
+    FILES ${CMAKE_SOURCE_DIR}/../doc/man/alpr.1 
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/share/man/man1 
+    COMPONENT doc
+    )
 ENDIF()
-install (DIRECTORY  ${CMAKE_SOURCE_DIR}/../runtime_data DESTINATION         ${CMAKE_INSTALL_PREFIX}/share/openalpr)
+
+install (
+  DIRECTORY ${CMAKE_SOURCE_DIR}/../runtime_data 
+  DESTINATION ${CMAKE_INSTALL_PREFIX}/share/openalpr
+  )
 
 # set runtime_data to reflect the current CMAKE_INSTALL_PREFIX
-CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/../config/openalpr.conf.user ${CMAKE_CURRENT_BINARY_DIR}/config/openalpr.conf)
-install (FILES      ${CMAKE_CURRENT_BINARY_DIR}/config/openalpr.conf DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/openalpr/      COMPONENT config)
+CONFIGURE_FILE(
+  ${CMAKE_SOURCE_DIR}/../config/openalpr.conf.user 
+  ${CMAKE_CURRENT_BINARY_DIR}/config/openalpr.conf
+  )
+
+IF(NOT EXISTS "${CMAKE_INSTALL_SYSCONFDIR}/openalpr/openalpr.conf") 
+  MESSAGE("${CMAKE_INSTALL_SYSCONFDIR}/openalpr/openalpr.conf doesn't exist!")
+  INSTALL(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/config/openalpr.conf 
+    DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/openalpr/ 
+    COMPONENT config
+    )
+ENDIF()
 
 CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/../config/openalpr.conf.defaults ${CMAKE_CURRENT_BINARY_DIR}/share/openalpr/config/openalpr.defaults.conf)
 install (FILES      ${CMAKE_CURRENT_BINARY_DIR}/share/openalpr/config/openalpr.defaults.conf DESTINATION ${CMAKE_INSTALL_PREFIX}/share/openalpr/config      COMPONENT config)
 
 IF (WITH_DAEMON)
   CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/../config/alprd.conf.user ${CMAKE_CURRENT_BINARY_DIR}/config/alprd.conf)
-  install (FILES      ${CMAKE_CURRENT_BINARY_DIR}/config/alprd.conf DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/openalpr/      COMPONENT config)
+
+  IF(NOT EXISTS "${CMAKE_INSTALL_SYSCONFDIR}/openalpr/alprd.conf") 
+    MESSAGE("${CMAKE_INSTALL_SYSCONFDIR}/openalpr/alprd.conf doesn't exist!")
+    INSTALL(
+      FILES ${CMAKE_CURRENT_BINARY_DIR}/config/alprd.conf 
+      DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/openalpr/ 
+      COMPONENT config
+    )
+  ENDIF()
 
   CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/../config/alprd.conf.defaults ${CMAKE_CURRENT_BINARY_DIR}/share/openalpr/config/alprd.defaults.conf)
-  install (FILES      ${CMAKE_CURRENT_BINARY_DIR}/share/openalpr/config/alprd.defaults.conf DESTINATION ${CMAKE_INSTALL_PREFIX}/share/openalpr/config      COMPONENT config)
+  INSTALL(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/share/openalpr/config/alprd.defaults.conf 
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/share/openalpr/config 
+    COMPONENT config
+  )
 
-  install (TARGETS    alprd DESTINATION  ${CMAKE_INSTALL_PREFIX}/bin)
+  install(TARGETS alprd DESTINATION  ${CMAKE_INSTALL_PREFIX}/bin)
 ENDIF()
 
 

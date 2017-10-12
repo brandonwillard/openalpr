@@ -110,7 +110,7 @@ int main( int argc, const char** argv )
     templatePattern = templatePatternArg.getValue();
     topn = topNArg.getValue();
     measureProcessingTime = clockSwitch.getValue();
-	do_motiondetection = motiondetect.getValue();
+  do_motiondetection = motiondetect.getValue();
   }
   catch (TCLAP::ArgException &e)    // catch any exceptions
   {
@@ -221,8 +221,7 @@ int main( int argc, const char** argv )
 
       while (program_active)
       {
-        std::vector<cv::Rect> regionsOfInterest;
-        int response = videoBuffer.getLatestFrame(&latestFrame, regionsOfInterest);
+        int response = videoBuffer.getLatestFrame(&latestFrame);
 
         if (response != -1)
         {
@@ -330,8 +329,8 @@ int main( int argc, const char** argv )
 bool is_supported_image(std::string image_file)
 {
   return (hasEndingInsensitive(image_file, ".png") || hasEndingInsensitive(image_file, ".jpg") || 
-	  hasEndingInsensitive(image_file, ".tif") || hasEndingInsensitive(image_file, ".bmp") ||  
-	  hasEndingInsensitive(image_file, ".jpeg") || hasEndingInsensitive(image_file, ".gif"));
+    hasEndingInsensitive(image_file, ".tif") || hasEndingInsensitive(image_file, ".bmp") ||  
+    hasEndingInsensitive(image_file, ".jpeg") || hasEndingInsensitive(image_file, ".gif"));
 }
 
 
@@ -344,12 +343,16 @@ bool detectandshow( Alpr* alpr, cv::Mat frame, std::string region, bool writeJso
   std::vector<AlprRegionOfInterest> regionsOfInterest;
   if (do_motiondetection)
   {
-	  cv::Rect rectan = motiondetector.MotionDetect(&frame);
-	  if (rectan.width>0) regionsOfInterest.push_back(AlprRegionOfInterest(rectan.x, rectan.y, rectan.width, rectan.height));
+    cv::Rect rectan = motiondetector.MotionDetect(&frame);
+    if (rectan.width>0) 
+      regionsOfInterest.push_back(AlprRegionOfInterest(rectan.x, rectan.y, rectan.width, rectan.height));
   }
-  else regionsOfInterest.push_back(AlprRegionOfInterest(0, 0, frame.cols, frame.rows));
+  else 
+    regionsOfInterest.push_back(AlprRegionOfInterest(0, 0, frame.cols, frame.rows));
+
   AlprResults results;
-  if (regionsOfInterest.size()>0) results = alpr->recognize(frame.data, frame.elemSize(), frame.cols, frame.rows, regionsOfInterest);
+  if (regionsOfInterest.size()>0) 
+    results = alpr->recognize(frame.data, frame.elemSize(), frame.cols, frame.rows, regionsOfInterest);
 
   timespec endTime;
   getTimeMonotonic(&endTime);

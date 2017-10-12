@@ -22,13 +22,12 @@
 using namespace alpr;
 
 void imageCollectionThread(void* arg);
-void getALPRImages(cv::VideoCapture cap, VideoDispatcher* dispatcher);
+void getALPRImages(cv::VideoCapture& cap, VideoDispatcher* dispatcher);
 
 
 VideoBuffer::VideoBuffer()
 {
   dispatcher = NULL;
-  
 }
 
 VideoBuffer::~VideoBuffer()
@@ -47,38 +46,39 @@ VideoDispatcher* VideoBuffer::createDispatcher(std::string mjpeg_url, int fps)
 void VideoBuffer::connect(std::string mjpeg_url, int fps)
 {
   
-    if (startsWith(mjpeg_url, "http") && hasEnding(mjpeg_url, ".mjpg") == false)
+  if (startsWith(mjpeg_url, "http") && hasEnding(mjpeg_url, ".mjpg") == false)
+  {
+    /*
+     The filename doesn't end with ".mjpg" so the downstream processing may not
+     treat it as such. OpenCV doesn't have a way to force the rendering, other
+     than via URL path, so let's add it to the URL.
+     */
+    std::size_t found = mjpeg_url.find("?");
+    if (found != std::string::npos)
     {
-      // The filename doesn't end with ".mjpg" so the downstream processing may not treat it as such
-      // OpenCV doesn't have a way to force the rendering, other than via URL path.  So, let's add it to the URL
-      
-     
-      std::size_t found = mjpeg_url.find("?");
-      if (found!=std::string::npos)
-      {
-	// URL already contains a "?"
-	mjpeg_url = mjpeg_url + "&openalprfiletype=file.mjpg";
-      }
-      else
-      {
-	// URL does not contain a "?"
-	mjpeg_url = mjpeg_url + "?openalprfiletype=file.mjpg";
-      }
-
+      // URL already contains a "?"
+      mjpeg_url = mjpeg_url + "&openalprfiletype=file.mjpg";
     }
+    else
+    {
+      // URL does not contain a "?"
+      mjpeg_url = mjpeg_url + "?openalprfiletype=file.mjpg";
+    }
+
+  }
+  
+  dispatcher = createDispatcher(mjpeg_url, fps);
     
-    dispatcher = createDispatcher(mjpeg_url, fps);
-      
-    tthread::thread* t = new tthread::thread(imageCollectionThread, (void*) dispatcher);
-    
+  tthread::thread* t = new tthread::thread(imageCollectionThread, (void*) dispatcher);
+  
 }
 
-int VideoBuffer::getLatestFrame(cv::Mat* frame, std::vector<cv::Rect>& regionsOfInterest)
+int VideoBuffer::getLatestFrame(cv::Mat* frame)
 {
   if (dispatcher == NULL)
     return -1;
   
-  return dispatcher->getLatestFrame(frame, regionsOfInterest);
+  return dispatcher->getLatestFrame(frame);
 }
 
 
@@ -93,9 +93,6 @@ void VideoBuffer::disconnect()
 }
 
 
-
-
-
 void imageCollectionThread(void* arg)
 {
   
@@ -105,11 +102,12 @@ void imageCollectionThread(void* arg)
   {
     try
     {
-      cv::VideoCapture cap=cv::VideoCapture();
+      cv::VideoCapture cap = cv::VideoCapture();
       dispatcher->log_info("Video stream connecting...");
 
       // Check if it's a webcam, if so, pass the device ID
       std::string video_prefix = "/dev/video";
+
       if (startsWith(dispatcher->mjpeg_url, video_prefix))
       {
         std::string device_number_str = dispatcher->mjpeg_url.substr(video_prefix.length());
@@ -134,9 +132,9 @@ void imageCollectionThread(void* arg)
       }
       else
       {
-	std::stringstream ss;
-	ss << "Stream " << dispatcher->mjpeg_url << " failed to open.";
-	dispatcher->log_error(ss.str());
+        std::stringstream ss;
+        ss << "Stream " << dispatcher->mjpeg_url << " failed to open.";
+        dispatcher->log_error(ss.str());
       }
 
     }
@@ -164,56 +162,48 @@ void imageCollectionThread(void* arg)
 }
 
 
-// Continuously grabs images from the video capture.  If there is an error,
-// it returns so that the video capture can be recreated.
-void getALPRImages(cv::VideoCapture cap, VideoDispatcher* dispatcher)
+/*
+ Continuously grabs images from the video capture.  If there is an error,
+ it returns so that the video capture can be recreated.
+*/
+void getALPRImages(cv::VideoCapture& cap, VideoDispatcher* dispatcher)
 {
+
+  cv::Mat frame;
 
   while (dispatcher->active)
   {
-    while (dispatcher->active)
+    
+    bool hasImage = false;
+
+    try
     {
-      
-      bool hasImage = false;
-      try
+      hasImage = cap.read(frame);
+
+      // Double check the image to make sure it's valid.
+      if (!frame.data || frame.empty())
       {
-        cv::Mat frame;
-	hasImage = cap.read(frame);
-		  // Double check the image to make sure it's valid.
-	if (!frame.data || frame.empty())
-	{
-	  std::stringstream ss;
-	  ss << "Stream " << dispatcher->mjpeg_url << " received invalid frame";
-	  dispatcher->log_error(ss.str());
-	  return;
-	}
-	
-	dispatcher->mMutex.lock();
-	dispatcher->setLatestFrame(frame);
-	dispatcher->mMutex.unlock();
-      }
-      catch (const std::runtime_error& error)
-      {
-	// Error occured while trying to gather image.  Retry, don't exit.
-	std::stringstream ss;
-	ss << "Exception happened " <<  error.what();
-	dispatcher->log_error(ss.str());
-	dispatcher->mMutex.unlock();
-	return;
+        std::stringstream ss;
+        ss << "Stream " << dispatcher->mjpeg_url << " received invalid frame";
+        dispatcher->log_error(ss.str());
+        return;
       }
 
-      
-      dispatcher->mMutex.unlock();
-      
-      if (hasImage == false)
-	break;
-      
-
-      // Delay 15ms
-      sleep_ms(15);    
+      dispatcher->setLatestFrame(frame);
+    }
+    catch (const std::runtime_error& error)
+    {
+      // Error occured while trying to gather image.  Retry, don't exit.
+      std::stringstream ss;
+      ss << "Exception happened " <<  error.what();
+      dispatcher->log_error(ss.str());
+      return;
     }
     
-    // Delay 100ms
-    sleep_ms(100);
+    // if (hasImage == false)
+    //   break;
+    
+    // sleep_ms(15);    
   }
+  
 }

@@ -209,10 +209,10 @@ int main( int argc, const char** argv )
       
       if (daemon_config.uploadData)
       {
-	// Kick off the data upload thread
-	UploadThreadData* udata = new UploadThreadData();
-	udata->upload_url = daemon_config.upload_url;
-	tthread::thread* thread_upload = new tthread::thread(dataUploadThread, (void*) udata );
+        // Kick off the data upload thread
+        UploadThreadData* udata = new UploadThreadData();
+        udata->upload_url = daemon_config.upload_url;
+        tthread::thread* thread_upload = new tthread::thread(dataUploadThread, (void*) udata );
         threads.push_back(thread_upload);
       }
       
@@ -229,7 +229,6 @@ int main( int argc, const char** argv )
   
   return 0;
 }
-
 
 void streamRecognitionThread(void* arg)
 {
@@ -258,8 +257,7 @@ void streamRecognitionThread(void* arg)
   
   while (daemon_active)
   {
-    std::vector<cv::Rect> regionsOfInterest;
-    int response = videoBuffer.getLatestFrame(&latestFrame, regionsOfInterest);
+    int response = videoBuffer.getLatestFrame(&latestFrame);
     
     if (response != -1)
     {
@@ -268,9 +266,13 @@ void streamRecognitionThread(void* arg)
       getTimeMonotonic(&startTime);
       
       std::vector<AlprRegionOfInterest> regionsOfInterest;
-      regionsOfInterest.push_back(AlprRegionOfInterest(0,0, latestFrame.cols, latestFrame.rows));
+      // TODO: Should this be our masked area?
+      regionsOfInterest.push_back(
+          AlprRegionOfInterest(0,0, latestFrame.cols, latestFrame.rows));
 
-      AlprResults results = alpr.recognize(latestFrame.data, latestFrame.elemSize(), latestFrame.cols, latestFrame.rows, regionsOfInterest);
+      AlprResults results = alpr.recognize(latestFrame.data,
+          latestFrame.elemSize(), latestFrame.cols, latestFrame.rows,
+          regionsOfInterest);
       
       timespec endTime;
       getTimeMonotonic(&endTime);
@@ -278,7 +280,7 @@ void streamRecognitionThread(void* arg)
       
       if (tdata->clock_on)
       {
-	LOG4CPLUS_INFO(logger, "Camera " << tdata->camera_id << " processed frame in: " << totalProcessingTime << " ms.");
+        LOG4CPLUS_INFO(logger, "Camera " << tdata->camera_id << " processed frame in: " << totalProcessingTime << " ms.");
       }
       
       if (results.plates.size() > 0)
@@ -286,53 +288,53 @@ void streamRecognitionThread(void* arg)
         
         std::stringstream uuid_ss;
         uuid_ss << tdata->site_id << "-cam" << tdata->camera_id << "-" << getEpochTimeMs();
-	std::string uuid = uuid_ss.str();
+        std::string uuid = uuid_ss.str();
         
-	// Save the image to disk (using the UUID)
-	if (tdata->output_images)
-	{
-	  std::stringstream ss;
-	  ss << tdata->output_image_folder << "/" << uuid << ".jpg";
-	  
-	  cv::imwrite(ss.str(), latestFrame);
-	}
-	
-	// Update the JSON content to include UUID and camera ID
-  
-	std::string json = alpr.toJson(results);
-	
-	cJSON *root = cJSON_Parse(json.c_str());
-	cJSON_AddStringToObject(root,	"uuid",		uuid.c_str());
-	cJSON_AddNumberToObject(root,	"camera_id",	tdata->camera_id);
-	cJSON_AddStringToObject(root, 	"site_id", 	tdata->site_id.c_str());
-	cJSON_AddNumberToObject(root,	"img_width",	latestFrame.cols);
-	cJSON_AddNumberToObject(root,	"img_height",	latestFrame.rows);
+        // Save the image to disk (using the UUID)
+        // TODO: Should this be in a separate thread?
+        if (tdata->output_images)
+        {
+          std::stringstream ss;
+          ss << tdata->output_image_folder << "/" << uuid << ".jpg";
+          
+          cv::imwrite(ss.str(), latestFrame);
+        }
+        
+        // Update the JSON content to include UUID and camera ID
+        
+        std::string json = alpr.toJson(results);
+        
+        cJSON *root = cJSON_Parse(json.c_str());
+        cJSON_AddStringToObject(root, "uuid", uuid.c_str());
+        cJSON_AddNumberToObject(root, "camera_id", tdata->camera_id);
+        cJSON_AddStringToObject(root, "site_id", tdata->site_id.c_str());
+        cJSON_AddNumberToObject(root, "img_width", latestFrame.cols);
+        cJSON_AddNumberToObject(root, "img_height", latestFrame.rows);
 
         // Add the company ID to the output if configured
         if (tdata->company_id.length() > 0)
-          cJSON_AddStringToObject(root, 	"company_id", 	tdata->company_id.c_str());
+          cJSON_AddStringToObject(root, "company_id", tdata->company_id.c_str());
 
-	char *out;
-	out=cJSON_PrintUnformatted(root);
-	cJSON_Delete(root);
-	
-	std::string response(out);
-	
-	free(out);
-	
-	// Push the results to the Beanstalk queue
-	for (int j = 0; j < results.plates.size(); j++)
-	{
-	  LOG4CPLUS_DEBUG(logger, "Writing plate " << results.plates[j].bestPlate.characters << " (" <<  uuid << ") to queue.");
-	}
-	
-	writeToQueue(response);
+        char *out;
+        out = cJSON_PrintUnformatted(root);
+        cJSON_Delete(root);
+        
+        std::string response(out);
+        
+        free(out);
+        
+        // Push the results to the Beanstalk queue
+        for (int j = 0; j < results.plates.size(); j++)
+        {
+          LOG4CPLUS_DEBUG(logger, "Writing plate " << results.plates[j].bestPlate.characters << " (" <<  uuid << ") to queue.");
+        }
+        
+        writeToQueue(response);
       }
     }
     
-    usleep(10000);
+    // usleep(10000);
   }
-  
   
   videoBuffer.disconnect();
   
@@ -340,7 +342,6 @@ void streamRecognitionThread(void* arg)
   
   delete tdata;
 }
-
 
 bool writeToQueue(std::string jsonResult)
 {
@@ -362,27 +363,23 @@ bool writeToQueue(std::string jsonResult)
   }
   catch (const std::runtime_error& error)
   {
-    LOG4CPLUS_WARN(logger, "Error connecting to Beanstalk.  Result has not been saved.");
+
+    std::stringstream ss;
+    ss << "Error connecting to Beanstalk: " << error.what() << ". Result has not been saved.";
+    LOG4CPLUS_WARN(logger, ss.str());
     return false;
   }
   return true;
 }
 
-
-
 void dataUploadThread(void* arg)
 {
   CURL *curl;
 
-  
   /* In windows, this will init the winsock stuff */ 
   curl_global_init(CURL_GLOBAL_ALL);
   
-  
   UploadThreadData* udata = (UploadThreadData*) arg;
-  
-
-  
   
   while(daemon_active)
   {
@@ -396,29 +393,28 @@ void dataUploadThread(void* arg)
     
       while (daemon_active)
       {
-	Beanstalk::Job job;
-	
-	client.reserve(job);
-	
-	if (job.id() > 0)
-	{
-	  //LOG4CPLUS_DEBUG(logger, job.body() );
-	  if (uploadPost(curl, udata->upload_url, job.body()))
-	  {
-	    client.del(job.id());
-	    LOG4CPLUS_INFO(logger, "Job: " << job.id() << " successfully uploaded" );
-	    // Wait 10ms
-	    sleep_ms(10);
-	  }
-	  else
-	  {
-	    client.release(job);
-	    LOG4CPLUS_WARN(logger, "Job: " << job.id() << " failed to upload.  Will retry." );
-	    // Wait 2 seconds
-	    sleep_ms(2000);
-	  }
-	}
-	
+        Beanstalk::Job job;
+        
+        client.reserve(job);
+        
+        if (job.id() > 0)
+        {
+          //LOG4CPLUS_DEBUG(logger, job.body() );
+          if (uploadPost(curl, udata->upload_url, job.body()))
+          {
+            client.del(job.id());
+            LOG4CPLUS_INFO(logger, "Job: " << job.id() << " successfully uploaded" );
+            // Wait 10ms
+            sleep_ms(10);
+          }
+          else
+          {
+            client.release(job);
+            LOG4CPLUS_WARN(logger, "Job: " << job.id() << " failed to upload.  Will retry." );
+            // Wait 2 seconds
+            sleep_ms(2000);
+          }
+        }
       }
       
       /* always cleanup */ 
@@ -435,7 +431,6 @@ void dataUploadThread(void* arg)
   curl_global_cleanup();
 }
 
-
 bool uploadPost(CURL* curl, std::string url, std::string data)
 {
   bool success = true;
@@ -448,7 +443,7 @@ bool uploadPost(CURL* curl, std::string url, std::string data)
   headers = curl_slist_append( headers, "charsets: utf-8");
  
   if(curl) {
-	/* Add the headers */
+  /* Add the headers */
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
    
     /* First set the URL that is about to receive our POST. This URL can
